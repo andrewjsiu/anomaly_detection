@@ -9,19 +9,18 @@ import os.path
 import numpy as np
 import pandas as pd
 
-main_directory = 'C:/Users/andre/Documents/anomaly_detection'
+main_directory = 'C:/Users/andre/Documents/anomaly_detection/'
 batch_filepath = os.path.join(main_directory, 'log_input/batch_log.json')
 stream_filepath = os.path.join(main_directory, 'log_input/stream_log.json')
 
 
-# Collect a set of all user ids that are part of the social network
-# Create a list of first-degree friendships as edges in a network graph   
-# A network graph can be represented by a set of vertices (use ids) 
-# and a set of edges (friendships)
-# I will then use network graph to compute higher-degree friendships
+# A network graph consists of a set of vertices (user ids) 
+# and a set of edges (first-degree friendships)
+# This network graph can then be used to compute higher-degree friendships
+# To represent a network graph in Python, I create a dictionary
+# mapping each user id to a set of first-degree friends user ids
 
-ids = set() 
-edges = []
+graph = {}
 list_purchases = []
 
 with open(batch_filepath) as f:
@@ -37,35 +36,26 @@ with open(batch_filepath) as f:
                 list_purchases.append(e)            
             
             elif e['event_type'] == 'befriend':
-                ids.add(e['id1'])
-                ids.add(e['id2'])
-                edges.append(set([e['id1'], e['id2']])) 
-            
+                if e['id1'] not in graph.keys():
+                    graph[e['id1']]={e['id2']}
+                else:
+                    graph[e['id1']].add(e['id2'])
+                    
+                if e['id2'] not in graph.keys():
+                    graph[e['id2']]={e['id1']}
+                else:
+                    graph[e['id2']].add(e['id1'])
+           
             elif e['event_type'] == 'unfriend':
-                edges.remove(set([e['id1'], e['id2']]))   
+                graph[e['id1']].remove(e['id2'])
+                graph[e['id2']].remove(e['id1'])
 
 # Create a dataframe of all previous purchases, which are then used for 
-# detecting a significantly large purchase later on
+# detecting a significantly large purchase among the new purchases
 
 df_purchases = pd.DataFrame(list_purchases)
 df_purchases['amount'] = df_purchases['amount'].astype(float)
 df_purchases['timestamp'] = pd.to_datetime(df_purchases['timestamp'])
-
-# There are many ways to represent a network graph
-# I think the most efficient way is to create a dictionary
-# that maps each user id to a set of first-degree friends user ids
-
-graph = dict.fromkeys(ids)
-
-for i in graph.keys():
-    # For each user id, create a set of first-degree neighbors 
-    # out of all the edges that contain this user id
-    neighbors = set()
-    for edge in edges:
-        if i in edge:
-            neighbors = neighbors.union(edge)
-            neighbors.discard(i)
-    graph[i] = neighbors
 
 # Build functions to get a set of all friends within a specified 
 # number of degrees of separation
@@ -163,8 +153,8 @@ with open(output_filepath, 'w') as flagged_file:
             
             # Update the existing social network of frienships
             elif e['event_type'] == 'befriend':
-                graph[e['id1']] = graph[e['id1']].union(set(e['id2']))
-                graph[e['id2']] = graph[e['id2']].union(set(e['id1']))
+                graph[e['id1']] = graph[e['id1']].union({e['id2']})
+                graph[e['id2']] = graph[e['id2']].union({e['id1']})
             elif e['event_type'] == 'unfriend':
-                graph[e['id1']] = graph[e['id1']].difference(set(e['id2']))
-                graph[e['id2']] = graph[e['id2']].difference(set(e['id1']))
+                graph[e['id1']] = graph[e['id1']].difference({e['id2']})
+                graph[e['id2']] = graph[e['id2']].difference({e['id1']})
