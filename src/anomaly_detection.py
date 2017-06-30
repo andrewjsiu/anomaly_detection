@@ -13,18 +13,6 @@ main_directory = 'C:/Users/andre/Documents/anomaly_detection'
 batch_filepath = os.path.join(main_directory, 'log_input/batch_log.json')
 stream_filepath = os.path.join(main_directory, 'log_input/stream_log.json')
 
-# Two flexible parameters, D and T, are given in the first line of 
-# the batch_log json file. D refers to the number of degrees in social network
-# and T is the tracked number of purchases in the user's network 
-events = []
-with open(batch_filepath) as f:
-    for index, line in enumerate(f):
-        if index == 0:
-            param = json.loads(line)
-            D = np.int(param['D'])
-            T = np.int(param['T'])
-        else:
-            events.append(json.loads(line))
 
 # Collect a set of all user ids that are part of the social network
 # Create a list of first-degree friendships as edges in a network graph   
@@ -36,24 +24,32 @@ ids = set()
 edges = []
 list_purchases = []
 
-for e in events:
+with open(batch_filepath) as f:
+    for index, line in enumerate(f):        
+        if index == 0:
+            param = json.loads(line)
+            D = np.int(param['D']) # D: number of degrees in social network
+            T = np.int(param['T']) # T: # of purchases in the user's network 
 
-    if e['event_type'] == 'befriend':
-        ids.add(e['id1'])
-        ids.add(e['id2'])
-        edges.append(set([e['id1'], e['id2']])) 
-    
-    elif e['event_type'] == 'unfriend':
-        edges.remove(set([e['id1'], e['id2']]))   
-    
-    elif e['event_type'] == 'purchase':
-        list_purchases.append(e)
+        else:
+            e = json.loads(line)
+            if e['event_type'] == 'purchase':
+                list_purchases.append(e)            
+            
+            elif e['event_type'] == 'befriend':
+                ids.add(e['id1'])
+                ids.add(e['id2'])
+                edges.append(set([e['id1'], e['id2']])) 
+            
+            elif e['event_type'] == 'unfriend':
+                edges.remove(set([e['id1'], e['id2']]))   
 
 # Create a dataframe of all previous purchases, which are then used for 
 # detecting a significantly large purchase later on
 
 df_purchases = pd.DataFrame(list_purchases)
 df_purchases['amount'] = df_purchases['amount'].astype(float)
+df_purchases['timestamp'] = pd.to_datetime(df_purchases['timestamp'])
 
 # There are many ways to represent a network graph
 # I think the most efficient way is to create a dictionary
@@ -139,24 +135,17 @@ with open(output_filepath, 'w') as flagged_file:
     with open(stream_filepath) as stream_file:
         for event in stream_file:
             e = json.loads(event)
-            
-            # Update the existing social network of frienships
-            if e['event_type'] == 'befriend':
-                graph[e['id1']] = graph[e['id1']].union(set(e['id2']))
-                graph[e['id2']] = graph[e['id2']].union(set(e['id1']))
-            elif e['event_type'] == 'unfriend':
-                graph[e['id1']] = graph[e['id1']].difference(set(e['id2']))
-                graph[e['id2']] = graph[e['id2']].difference(set(e['id1']))
-            
-            elif e['event_type'] == 'purchase':                
+      
+            if e['event_type'] == 'purchase':                
                 # Select all purchases made by friends within 
                 # D degrees of separation
-                history = df_purchases[df_purchases['id'].isin(
-                        list(network(graph, e['id'], D)))].amount  
+                rows = df_purchases['id'].isin(list(network(graph, e['id'], D)))
+                history = df_purchases[rows].sort_values(by='timestamp').amount  
                 
                 # Update the dataframe of all previous purchases
+                e['amount'] = np.float(e['amount'])
+                e['timestamp'] = pd.to_datetime(e['timestamp'])
                 df_purchases = df_purchases.append(e, ignore_index=True)
-                df_purchases['amount'] = df_purchases['amount'].astype(float)
                 
                 # Check if there are at least two previous purchases
                 # Compute the mean and standard deviation of T tracked purchases
@@ -167,5 +156,15 @@ with open(output_filepath, 'w') as flagged_file:
                     if np.float(e['amount']) >= mean + 3 * std:
                         e['mean'] = str(mean)
                         e['sd'] = str(std)
+                        e['amount'] = str(e['amount'])
+                        e['timestamp'] = str(e['timestamp'])          
                         json.dump(e, flagged_file)
                         flagged_file.write('\n')
+            
+            # Update the existing social network of frienships
+            elif e['event_type'] == 'befriend':
+                graph[e['id1']] = graph[e['id1']].union(set(e['id2']))
+                graph[e['id2']] = graph[e['id2']].union(set(e['id1']))
+            elif e['event_type'] == 'unfriend':
+                graph[e['id1']] = graph[e['id1']].difference(set(e['id2']))
+                graph[e['id2']] = graph[e['id2']].difference(set(e['id1']))
