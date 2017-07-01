@@ -1,18 +1,50 @@
 """
-Created on Thu Jun 29 08:42:08 2017
+    Author: Andrew Siu (andrewjsiu@gmail.com)
+    
+    -------------------------------------------------
+    Detecting Large Purchases within a Social Network
+    -------------------------------------------------
+    
+    This program detects a significantly large purchase compared to previous 
+    purchases made by one's social network. The purpose is to help the e-commerce 
+    company flag up these large purchases for their friends to see, hoping that 
+    they will be influenced to make similarly large purchases. 
+    
+    My approach is to first create a social network graph, which is characterized
+    as a set of user ids and a set of edges that indicate first-degree friendships. 
+    There are many ways to represent this graph in Python, but I think the most 
+    efficient way is to create a dictionary mapping each user id to a set of his 
+    or her first-degree friends' user ids. It will then only take one step to find 
+    all the first-degree friends given any user. Based on this network graph, I 
+    can find the set of all second-degree friends by looping through the user's 
+    first-degree friends and collecting all of the their first-degree friends 
+    (not including the user himself of course). Similarly, all friends within 
+    three degrees of separation are found by looping through one's second-degree 
+    friends and collecting all their first-degree friends. We can do this for any 
+    higher-degree of separation, but research has shown that almost everyone is 
+    found within 6 degrees of separation.
 
-@author: asiu
+    As new events stream in from active users, I update the existing social network 
+    graph if the event is 'befriend' or 'unfriend' and append the new purchase 
+    data to the pandas dataframe of all purchases. Given a buyer's purchase event, 
+    pandas allows me to select all previous purchases made by all neighbors within 
+    D degrees of separation to the buyer. I then compute the mean and standard 
+    deviation of the T most recent purchases made within this buyer's social network. 
+    The next step is to detect and flag up any purchases that are more than 3 
+    standard deviations above the mean and save them into the output file as 
+    flagged_purchases.json. The hope is that showing these buyers' significantly 
+    large purcahses to their friends will increase sales through peer influence.
+    
 """
-
+import sys
 import json
-import os.path
 import numpy as np
 import pandas as pd
 
-main_directory = 'C:/Users/andre/Documents/anomaly_detection/'
-batch_filepath = os.path.join(main_directory, 'log_input/batch_log.json')
-stream_filepath = os.path.join(main_directory, 'log_input/stream_log.json')
 
+batch_filepath = sys.argv[1]
+stream_filepath = sys.argv[2]
+output_filepath = sys.argv[3]
 
 # A network graph consists of a set of vertices (user ids) 
 # and a set of edges (first-degree friendships)
@@ -49,6 +81,7 @@ with open(batch_filepath) as f:
             elif e['event_type'] == 'unfriend':
                 graph[e['id1']].remove(e['id2'])
                 graph[e['id2']].remove(e['id1'])
+f.close()
 
 # Create a dataframe of all previous purchases, which are then used for 
 # detecting a significantly large purchase among the new purchases
@@ -117,8 +150,6 @@ def network(graph, i, D):
 # D degrees of separation.
 
 # Create and open a new file in write mode to collect flagged purchases
-output_filepath = os.path.join(main_directory, 'log_output/flagged_purchases.json')
-
 with open(output_filepath, 'w') as flagged_file:
     
     # Read in the stream of new events one by one
@@ -140,14 +171,15 @@ with open(output_filepath, 'w') as flagged_file:
                 # Check if there are at least two previous purchases
                 # Compute the mean and standard deviation of T tracked purchases
                 if len(history)>=2:
-                    mean = round(history.tail(T).mean(), 2)
-                    std = round(history.tail(T).std(ddof=0), 2)
+                    mean = history.tail(T).mean()
+                    std = history.tail(T).std(ddof=0)
                     
                     if np.float(e['amount']) >= mean + 3 * std:
-                        e['mean'] = str(mean)
-                        e['sd'] = str(std)
-                        e['amount'] = str(e['amount'])
+                        e['mean'] = '{:.2f}'.format(mean)
+                        e['sd'] = '{:.2f}'.format(std)
+                        e['amount'] = '{:.2f}'.format(e['amount'])
                         e['timestamp'] = str(e['timestamp'])          
+                        
                         json.dump(e, flagged_file)
                         flagged_file.write('\n')
             
@@ -158,3 +190,7 @@ with open(output_filepath, 'w') as flagged_file:
             elif e['event_type'] == 'unfriend':
                 graph[e['id1']] = graph[e['id1']].difference({e['id2']})
                 graph[e['id2']] = graph[e['id2']].difference({e['id1']})
+                
+    stream_file.close()
+        
+flagged_file.close()
