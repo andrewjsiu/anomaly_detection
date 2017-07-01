@@ -10,7 +10,7 @@
     
 """
 
-from anomaly_detection import degree2, degree3, degree4, degree5
+from network import degree2, degree3, degree4, degree5
 import unittest
 
 class TestNetwork(unittest.TestCase):
