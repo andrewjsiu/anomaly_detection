@@ -1,4 +1,4 @@
-## Anomaly Detection
+## Detecting Large Purchases within a Social Network
 
 This repository includes my code in Python 3.6 to implement the feature of detecting a significantly large purchase compared to previous  purchases made by one's social network. The purpose is to help the e-commerce company flag up these large purchases for their friends to see, hoping that they will be influenced to make similarly large purchases. See the original challenge summary posed by [Insight Data Science](https://github.com/InsightDataScience/anomaly_detection).
 
