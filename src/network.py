@@ -26,7 +26,6 @@ def degree3(graph, i):
     # Add all the first-degree friends of user i's second-degree friends
     for friend in degree2(graph, i) - graph[i]:
         neighbors = neighbors.union(graph[friend])
-        neighbors.discard(i)
     return neighbors
 
 def degree4(graph, i):
@@ -35,7 +34,6 @@ def degree4(graph, i):
     # Add all the first-degree friends of user i's third-degree friends
     for friend in degree3(graph, i) - degree2(graph, i):
         neighbors = neighbors.union(graph[friend])
-        neighbors.discard(i)
     return neighbors
 
 def degree5(graph, i):
@@ -44,7 +42,6 @@ def degree5(graph, i):
     # Add all the first-degree friends of user i's fourth-degree friends
     for friend in degree4(graph, i) - degree3(graph, i):
         neighbors = neighbors.union(graph[friend])
-        neighbors.discard(i)
     return neighbors
 
 # Call user i's entire social network within D degrees of separation
